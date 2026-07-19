@@ -1,42 +1,49 @@
 import streamlit as st
 import yaml
 
-# Set wide page layout
+# Establish layout architecture
 st.set_page_config(layout="wide")
-st.title("🛡️ Dynamic CISSP Token-Saver Chatbot")
-st.subheader("Hackathon Proof of Concept: Real-Time YAML vs. Raw Document Search")
+st.title("🛡️ Dynamic LLM Audit Token-Saver Chatbot")
+st.subheader("Hackathon Proof of Concept: Multi-Layered Auditing Framework")
 
-# 1. Sidebar File Upload Section
+# 1. Sidebar File Upload Interface
 st.sidebar.header("📁 Step 1: Upload Your Data Sources")
 uploaded_raw = st.sidebar.file_uploader("Upload Raw text file (.txt)", type=["txt"])
 uploaded_yaml = st.sidebar.file_uploader("Upload Optimized YAML module (.yaml)", type=["yaml"])
 
-# 2. Default data fallback if user hasn't uploaded anything yet
-default_raw = "Responsibilities of Key Roles\nRole: Data Owner. Duties: Defines classification, approves access."
-default_yaml = "cissp_roles:\n  data_owner: [classify, approve_access]"
+# 2. Hardcoded fallback dataset based on the paper's framework
+default_raw = """
+Three-Layered LLM Auditing Framework:
+1. Governance Audit: Audits technology providers, assessing internal workflows and quality management via white-box access.
+2. Model Audit: Audits large language models after pre-training but prior to release, checking robustness and truthfulness via medium-level access.
+3. Application Audit: Audits specific downstream applications, evaluating legal compliance and real-world user impact via black-box access.
+"""
 
+default_yaml = """
+llm_auditing_framework:
+  governance_audit: [technology_provider, workflows, white_box]
+  model_audit: [large_language_model, robustness_truthfulness, medium_access]
+  application_audit: [downstream_application, compliance_impact, black_box]
+"""
+
+# Extract text strings safely from upload pipelines
 raw_context = uploaded_raw.read().decode("utf-8") if uploaded_raw else default_raw
-if uploaded_yaml:
-    yaml_context = uploaded_yaml.read().decode("utf-8")
-else:
-    yaml_context = default_yaml
+yaml_context = uploaded_yaml.read().decode("utf-8") if uploaded_yaml else default_yaml
 
-# Simple metrics helper
 def estimate_tokens(text):
     return len(text.split()) + int(len(text) * 0.1)
 
-# 3. Step 2: The User Search Query Interface
-user_query = st.text_input("💬 Ask the CISSP Bot a question based on your data:", 
-                          value="What are the duties of the data owner?")
+# 3. Step 2: Search Query Input Area
+user_query = st.text_input("💬 Ask the Bot a framework question:", 
+                          value="What does a model audit look like?")
 
-# 4. Simple Rule-Based Dynamic Search Logic (Simulating RAG without heavy DB setup)
+# 4. Parsing engine designed to find matching words
 def dynamic_search(query, context, data_type):
     query_words = [w.lower() for w in query.replace("?", "").split() if len(w) > 3]
     
     if data_type == "yaml":
         try:
             parsed_yaml = yaml.safe_load(context)
-            # Traverse YAML keys dynamically based on matching query words
             for key, val in parsed_yaml.items():
                 if any(word in str(key).lower() for word in query_words):
                     return f"{key}: {val}"
@@ -46,28 +53,26 @@ def dynamic_search(query, context, data_type):
                             return f"{subkey}: {subval}"
         except Exception:
             return "Error parsing YAML file structure."
-        return "Key query terms not matched in YAML schema structure."
-        
+        return "Key terms not matched in YAML layout structure."
     else:
-        # Simple line-by-line raw phrase finder
         lines = context.split("\n")
         matched_lines = [line for line in lines if any(word in line.lower() for word in query_words)]
         if matched_lines:
             return " ".join(matched_lines[:2])
-        return "Context chunk not found in raw text document matching search terms."
+        return "No direct line matches found within the raw text document context."
 
-# 5. Core Application Processing
+# 5. Core Performance Matrix Render
 if user_query:
     raw_tokens = estimate_tokens(raw_context + user_query)
     yaml_tokens = estimate_tokens(yaml_context + user_query)
     savings = max(0, ((raw_tokens - yaml_tokens) / raw_tokens) * 100)
 
-    st.info(f"💡 **Token Reduction Impact:** Your structural setup reduces processed text size by **{savings:.1f}%** dynamically!")
+    st.info(f"💡 **Token Reduction Impact:** Your setup shrinks input payload size by **{savings:.1f}%** dynamically!")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.error("❌ Approach A: Searching Raw Unstructured Context")
+        st.error("❌ Approach A: Searching Raw Context Strings")
         st.metric(label="Estimated Input Tokens Passed", value=raw_tokens)
         with st.expander("Show Raw Data Payload"):
             st.code(raw_context, language="text")
@@ -76,7 +81,7 @@ if user_query:
         st.markdown(f"**AI Search Output:** {response_raw}")
 
     with col2:
-        st.success("✅ Approach B: Querying Compressed YAML Schema")
+        st.success("✅ Approach B: Querying Compressed YAML Schema Mapping")
         st.metric(label="Estimated Input Tokens Passed", value=yaml_tokens, delta=f"-{max(0, raw_tokens - yaml_tokens)} tokens")
         with st.expander("Show Compressed YAML Payload"):
             st.code(yaml_context, language="yaml")
