@@ -1,78 +1,85 @@
 import streamlit as st
 import yaml
 
-# Initialize page layout to wide screen for the side-by-side comparison
+# Set wide page layout
 st.set_page_config(layout="wide")
-st.title("🛡️ CISSP Token-Saver Chatbot Demo")
-st.subheader("Hackathon Proof of Concept: YAML Schema vs. Raw PDF Text")
+st.title("🛡️ Dynamic CISSP Token-Saver Chatbot")
+st.subheader("Hackathon Proof of Concept: Real-Time YAML vs. Raw Document Search")
 
-# 1. Define our two data structures based on Page 6 of the document
-RAW_PDF_TEXT = """
-Responsibilities of Key Roles
-Role: Data Owner. Duties: Defines classification, approves access, sets retention, requests audits.
-Role: Data Custodian. Duties: Maintains backups, configures ACLs, updates classification labels.
-Role: System Owner. Duties: Oversees systems that store/process data, manages OS/application-level security.
-Role: User. Duties: Uses data per policy, reports suspicious activity.
-Role: Privacy Officer. Duties: Ensures data handling aligns with privacy laws and corporate policies.
-Role: Compliance Officer. Duties: Audits classification policy adherence, especially in regulated sectors (e.g., finance, healthcare).
-"""
+# 1. Sidebar File Upload Section
+st.sidebar.header("📁 Step 1: Upload Your Data Sources")
+uploaded_raw = st.sidebar.file_uploader("Upload Raw text file (.txt)", type=["txt"])
+uploaded_yaml = st.sidebar.file_uploader("Upload Optimized YAML module (.yaml)", type=["yaml"])
 
-YAML_DATA = """
-cissp_roles:
-  data_owner: [classify, approve_access, set_retention, request_audits]
-  data_custodian: [backup, config_acls, update_labels]
-  system_owner: [oversee_infrastructure, manage_os_app_security]
-  user: [use_per_policy, report_anomalies]
-  privacy_officer: [align_privacy_laws, enforce_privacy_policy]
-  compliance_officer: [audit_policy_adherence, check_regulated_sectors]
-"""
+# 2. Default data fallback if user hasn't uploaded anything yet
+default_raw = "Responsibilities of Key Roles\nRole: Data Owner. Duties: Defines classification, approves access."
+default_yaml = "cissp_roles:\n  data_owner: [classify, approve_access]"
 
-# Simple approximation function: 1 word/token placeholder roughly equals 4 characters for metrics display
+raw_context = uploaded_raw.read().decode("utf-8") if uploaded_raw else default_raw
+if uploaded_yaml:
+    yaml_context = uploaded_yaml.read().decode("utf-8")
+else:
+    yaml_context = default_yaml
+
+# Simple metrics helper
 def estimate_tokens(text):
     return len(text.split()) + int(len(text) * 0.1)
 
-# 2. User Input Section
-user_query = st.text_input("💬 Ask the CISSP Bot a role responsibility question:", 
-                          value="Who configures access control lists?")
+# 3. Step 2: The User Search Query Interface
+user_query = st.text_input("💬 Ask the CISSP Bot a question based on your data:", 
+                          value="What are the duties of the data owner?")
 
-# Dummy response simulation for the demo frontend setup (Replace with actual OpenAI API calls if keys are provided)
-def simulate_ai_response(prompt_type, query):
-    if "access control" in query.lower() or "acls" in query.lower():
-        if prompt_type == "raw":
-            return "Based on the provided documentation, the role responsible for configuring access control lists (ACLs) is the Data Custodian, who also maintains backups and updates classification labels."
-        return "data_custodian"
-    return "Information not found in context."
+# 4. Simple Rule-Based Dynamic Search Logic (Simulating RAG without heavy DB setup)
+def dynamic_search(query, context, data_type):
+    query_words = [w.lower() for w in query.replace("?", "").split() if len(w) > 3]
+    
+    if data_type == "yaml":
+        try:
+            parsed_yaml = yaml.safe_load(context)
+            # Traverse YAML keys dynamically based on matching query words
+            for key, val in parsed_yaml.items():
+                if any(word in str(key).lower() for word in query_words):
+                    return f"{key}: {val}"
+                if isinstance(val, dict):
+                    for subkey, subval in val.items():
+                        if any(word in str(subkey).lower() for word in query_words):
+                            return f"{subkey}: {subval}"
+        except Exception:
+            return "Error parsing YAML file structure."
+        return "Key query terms not matched in YAML schema structure."
+        
+    else:
+        # Simple line-by-line raw phrase finder
+        lines = context.split("\n")
+        matched_lines = [line for line in lines if any(word in line.lower() for word in query_words)]
+        if matched_lines:
+            return " ".join(matched_lines[:2])
+        return "Context chunk not found in raw text document matching search terms."
 
+# 5. Core Application Processing
 if user_query:
-    # Calculate metrics
-    raw_tokens = estimate_tokens(RAW_PDF_TEXT + user_query)
-    yaml_tokens = estimate_tokens(YAML_DATA + user_query)
-    savings = ((raw_tokens - yaml_tokens) / raw_tokens) * 100
+    raw_tokens = estimate_tokens(raw_context + user_query)
+    yaml_tokens = estimate_tokens(yaml_context + user_query)
+    savings = max(0, ((raw_tokens - yaml_tokens) / raw_tokens) * 100)
 
-    # Display global metrics banner
-    st.info(f"💡 **Token Reduction Impact:** Your YAML optimization project reduces input data size by **{savings:.1f}%** for this query!")
+    st.info(f"💡 **Token Reduction Impact:** Your structural setup reduces processed text size by **{savings:.1f}%** dynamically!")
 
-    # Create two layout columns
     col1, col2 = st.columns(2)
 
     with col1:
-        st.error("❌ Approach A: Searching Raw PDF Document Context")
+        st.error("❌ Approach A: Searching Raw Unstructured Context")
         st.metric(label="Estimated Input Tokens Passed", value=raw_tokens)
+        with st.expander("Show Raw Data Payload"):
+            st.code(raw_context, language="text")
         
-        with st.expander("View Payload Sent to LLM"):
-            st.code(RAW_PDF_TEXT, language="text")
-            
-        ai_raw_response = simulate_ai_response("raw", user_query)
-        st.markdown(f"**AI Response:** {ai_raw_response}")
-        st.caption("⚠️ *Notice how the response includes extra conversational words, costing more output tokens.*")
+        response_raw = dynamic_search(user_query, raw_context, "raw")
+        st.markdown(f"**AI Search Output:** {response_raw}")
 
     with col2:
-        st.success("✅ Approach B: Querying Compressed YAML Schema Module")
-        st.metric(label="Estimated Input Tokens Passed", value=yaml_tokens, delta=f"-{raw_tokens - yaml_tokens} tokens")
-        
-        with st.expander("View Payload Sent to LLM"):
-            st.code(YAML_DATA, language="yaml")
+        st.success("✅ Approach B: Querying Compressed YAML Schema")
+        st.metric(label="Estimated Input Tokens Passed", value=yaml_tokens, delta=f"-{max(0, raw_tokens - yaml_tokens)} tokens")
+        with st.expander("Show Compressed YAML Payload"):
+            st.code(yaml_context, language="yaml")
             
-        ai_yaml_response = simulate_ai_response("yaml", user_query)
-        st.markdown(f"**AI Response:** `{ai_yaml_response}`")
-        st.caption("🎯 *Notice how the structure forces a hyper-precise, cheap, single-word return payload.*")
+        response_yaml = dynamic_search(user_query, yaml_context, "yaml")
+        st.markdown(f"**AI Search Output:** `{response_yaml}`")
