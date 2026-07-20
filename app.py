@@ -3,6 +3,7 @@ import os
 import yaml
 from pypdf import PdfReader
 from docx import Document
+import Levenshtein
 
 # Establish layout architecture
 st.set_page_config(layout="wide")
@@ -83,7 +84,7 @@ def automatic_yaml_generator():
                         structured_map[key] = value
                 
                 # Case 2: Definition string extraction (captures 'is characterized by', 'refers to')
-                elif "is characterized by" in cleaned_line.lower() or "refers to" in cleaned_line.lower() or "is a process" in cleaned_line.lower():
+                elif any(t in cleaned_line.lower() for t in ["is characterized by", "refers to", "is a process", "defined as"]):
                     words = cleaned_line.split()
                     key = f"definition_{index}"
                     if len(words) > 2:
@@ -93,9 +94,8 @@ def automatic_yaml_generator():
 
             # Robust fallback logic mapping raw paragraph strings safely into keys if text is unstructured
             if not structured_map:
-                structured_map["document_title"] = name.replace(" ", "_").lower()
-                structured_map["extracted_summary"] = raw_text.replace("\n", " ")[:200].strip() + "..."
-                # Segment remaining content cleanly
+                name_key = name.replace(" ", "_").lower()
+                structured_map[f"{name_key}_summary"] = raw_text.replace("\n", " ")[:200].strip() + "..."
                 chunks = [raw_text[i:i+400].replace("\n", " ").strip() for i in range(0, min(len(raw_text), 2000), 400)]
                 for i, chunk in enumerate(chunks):
                     structured_map[f"content_segment_{i+1}"] = chunk
@@ -111,6 +111,67 @@ def automatic_yaml_generator():
     return files_processed
 
 # -------------------------------------------------------------
+# ADVANCED DISTANCE-BASED SEARCH ENGINE
+# -------------------------------------------------------------
+def smart_search_engine(query, context, mode):
+    query_clean = query.lower().strip().replace("?", "")
+    query_words = set(w for w in query_clean.split() if len(w) > 3)
+    
+    if mode == "yaml":
+        try:
+            data = yaml.safe_load(context)
+            if not data:
+                return "Empty database container schema."
+            
+            best_key = None
+            best_score = -1
+            
+            for k, v in data.items():
+                k_clean = str(k).lower().replace("_", " ")
+                # Strategy 1: Word intersection count overlap
+                k_words = set(str(k).lower().split("_"))
+                overlap = len(query_words.intersection(k_words))
+                
+                # Strategy 2: String similarity matching ratio
+                similarity = Levenshtein.ratio(query_clean, k_clean)
+                total_score = (overlap * 2) + similarity
+                
+                if total_score > best_score:
+                    best_score = total_score
+                    best_key = k
+            
+            if best_key and best_score > 0.3:
+                return f"**{best_key}**: {data[best_key]}"
+            return "No matching schema parameters located in the YAML index layer."
+        except:
+            return "Parsing error encountered reading data schema layout."
+            
+    else:
+        lines = [line.strip() for line in context.split("\n") if line.strip()]
+        if not lines:
+            return "No raw context data extracted found."
+            
+        best_line = None
+        best_score = -1
+        
+        for line in lines:
+            line_clean = line.lower()
+            line_words = set(line_clean.split())
+            overlap = len(query_words.intersection(line_words))
+            
+            # Boost score if line explicitly mentions a common diagnostic definition indicator
+            boost = 1.5 if any(t in line_clean for t in ["refers to", "characterized by", "is a"]) else 0
+            total_score = overlap + boost
+            
+            if total_score > best_score:
+                best_score = total_score
+                best_line = line
+                
+        if best_line and best_score > 0:
+            return best_line
+        return "No text variables intercepted matching key words."
+
+# -------------------------------------------------------------
 # APPLICATION DASHBOARD RENDER LAYER
 # -------------------------------------------------------------
 st.sidebar.header("⚙️ Local System Controls")
@@ -120,21 +181,20 @@ st.sidebar.markdown(f"**Cached YAML Target Folder:** `{CACHE_DIR}/`")
 if st.sidebar.button("🔄 Auto-Scan Folder & Convert to YAML"):
     count = automatic_yaml_generator()
     if count > 0:
-        st.sidebar.success(f"Processed {count} file targets (.txt, .pdf, .docx) into search caches!")
+        st.sidebar.success(f"Processed {count} file targets into search caches!")
+        st.rerun()
     else:
         st.sidebar.warning("No new compatible documents located in source folder directories.")
 
 # Dynamically populate user selectors based on any detected files
-available_files = [f for f in os.listdir(SOURCE_DIR) if os.path.splitext(f)[1].lower() in [".txt", ".pdf", ".docx"]]
+available_files = [f for f in os.listdir(SOURCE_DIR) if os.path.splitext(f).lower() in [".txt", ".pdf", ".docx"]]
 
 if available_files:
     selected_file = st.selectbox("📂 Select file to perform lookup comparisons against:", available_files)
     name, ext = os.path.splitext(selected_file)
     
-    # Read text dynamically from original native source file
     raw_context = extract_text_from_file(os.path.join(SOURCE_DIR, selected_file), ext.lower())
     
-    # Fetch automatically mapped YAML conversion counterpart
     yaml_path = os.path.join(CACHE_DIR, f"{name}.yaml")
     if os.path.exists(yaml_path):
         with open(yaml_path, "r", encoding="utf-8") as yf:
@@ -146,33 +206,6 @@ else:
     yaml_context = "auditing:\n  definition: Independent examination of an entity."
 
 user_query = st.text_input("💬 Type your question here:", value="What is Auditing?")
-
-def search_engine(query, context, mode):
-    query_words = [w.lower() for w in query.replace("?", "").split() if len(w) > 3]
-    query_lower = query.lower()
-    is_definition_query = "what is" in query_lower or "define" in query_lower
-    
-    if mode == "yaml":
-        try:
-            data = yaml.safe_load(context)
-            if is_definition_query:
-                for k, v in data.items():
-                    if "def" in str(k).lower() or "audit" in str(k).lower():
-                        return f"**{k}**: {v}"
-            for k, v in data.items():
-                if any(w in str(k).lower() for w in query_words):
-                    return f"**{k}**: {v}"
-        except:
-            return "Parsing error encountered."
-        return "No specific schema coordinates matched query variables."
-    else:
-        lines = context.split("\n")
-        if is_definition_query:
-            for line in lines:
-                if "audit" in line.lower() and any(t in line.lower() for t in ["characterized by", "refers to", "process"]):
-                    return line.strip()
-        matches = [l for l in lines if any(w in l.lower() for w in query_words)]
-        return matches[0] if matches else "No raw text variables intercepted matching key words."
 
 if user_query:
     raw_tokens = estimate_tokens(raw_context + user_query)
@@ -187,11 +220,9 @@ if user_query:
         st.metric("Total Tokens Transmitted", raw_tokens)
         with st.expander("Show Native Text Extract"):
             st.text(raw_context)
-        st.markdown(f"**Search Result:** {search_engine(user_query, raw_context, 'raw')}")
+        st.markdown(f"**Search Result:** {smart_search_engine(user_query, raw_context, 'raw')}")
 
     with col2:
         st.success("✅ Approach B: Querying Auto-Generated YAML Database Layer")
         st.metric("Total Tokens Transmitted", yaml_tokens, delta=f"-{max(0, raw_tokens - yaml_tokens)} tokens")
         with st.expander("Show Optimized YAML Layout"):
-            st.code(yaml_context, language="yaml")
-        st.markdown(f"**Search Result:** {search_engine(user_query, yaml_context, 'yaml')}")
