@@ -1,90 +1,197 @@
 import streamlit as st
+import os
 import yaml
+from pypdf import PdfReader
+from docx import Document
 
 # Establish layout architecture
 st.set_page_config(layout="wide")
-st.title("🛡️ Dynamic LLM Audit Token-Saver Chatbot")
-st.subheader("Hackathon Proof of Concept: Multi-Layered Auditing Framework")
+st.title("🤖 Multi-Format Document-to-YAML Optimizer")
+st.subheader("Hackathon Strategy: Automated Cross-Platform Data Structuring")
 
-# 1. Sidebar File Upload Interface
-st.sidebar.header("📁 Step 1: Upload Your Data Sources")
-uploaded_raw = st.sidebar.file_uploader("Upload Raw text file (.txt)", type=["txt"])
-uploaded_yaml = st.sidebar.file_uploader("Upload Optimized YAML module (.yaml)", type=["yaml"])
+# Define target workspace configurations
+SOURCE_DIR = "./source_docs"
+CACHE_DIR = "./yaml_cache"
 
-# 2. Hardcoded fallback dataset based on the paper's framework
-default_raw = """
-Three-Layered LLM Auditing Framework:
-1. Governance Audit: Audits technology providers, assessing internal workflows and quality management via white-box access.
-2. Model Audit: Audits large language models after pre-training but prior to release, checking robustness and truthfulness via medium-level access.
-3. Application Audit: Audits specific downstream applications, evaluating legal compliance and real-world user impact via black-box access.
-"""
-
-default_yaml = """
-llm_auditing_framework:
-  governance_audit: [technology_provider, workflows, white_box]
-  model_audit: [large_language_model, robustness_truthfulness, medium_access]
-  application_audit: [downstream_application, compliance_impact, black_box]
-"""
-
-# Extract text strings safely from upload pipelines
-raw_context = uploaded_raw.read().decode("utf-8") if uploaded_raw else default_raw
-yaml_context = uploaded_yaml.read().decode("utf-8") if uploaded_yaml else default_yaml
+os.makedirs(SOURCE_DIR, exist_ok=True)
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 def estimate_tokens(text):
     return len(text.split()) + int(len(text) * 0.1)
 
-# 3. Step 2: Search Query Input Area
-user_query = st.text_input("💬 Ask the Bot a framework question:", 
-                          value="What does a model audit look like?")
+# -------------------------------------------------------------
+# CORE EXTRACTOR ENGINE FOR MULTIPLE EXTENSIONS
+# -------------------------------------------------------------
+def extract_text_from_file(filepath, extension):
+    text_content = ""
+    try:
+        if extension == ".txt":
+            with open(filepath, "r", encoding="utf-8") as f:
+                text_content = f.read()
+                
+        elif extension == ".pdf":
+            reader = PdfReader(filepath)
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_content += page_text + "\n"
+                    
+        elif extension == ".docx":
+            doc = Document(filepath)
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    text_content += paragraph.text + "\n"
+    except Exception as e:
+        st.sidebar.error(f"Error reading {os.path.basename(filepath)}: {str(e)}")
+        
+    return text_content
 
-# 4. Parsing engine designed to find matching words
-def dynamic_search(query, context, data_type):
-    query_words = [w.lower() for w in query.replace("?", "").split() if len(w) > 3]
+# -------------------------------------------------------------
+# STRUCTURED DATA PARSER CONVERSION LAYER
+# -------------------------------------------------------------
+def automatic_yaml_generator():
+    files_processed = 0
+    # Scan the local source_docs folder
+    for filename in os.listdir(SOURCE_DIR):
+        name, ext = os.path.splitext(filename)
+        ext = ext.lower()
+        
+        if ext in [".txt", ".pdf", ".docx"]:
+            filepath = os.path.join(SOURCE_DIR, filename)
+            raw_text = extract_text_from_file(filepath, ext)
+            
+            if not raw_text.strip():
+                continue
+                
+            # Rule-based chunk compiler mapping structural attributes into key-value data paths
+            structured_map = {}
+            lines = raw_text.split("\n")
+            
+            for index, line in enumerate(lines):
+                cleaned_line = line.strip()
+                if not cleaned_line:
+                    continue
+                    
+                # Case 1: Key-value formatting logic splits (e.g., Role: Data Owner)
+                if ":" in cleaned_line:
+                    parts = cleaned_line.split(":", 1)
+                    key = parts[0].strip().lower().replace(" ", "_").replace("-", "_")
+                    value = parts[1].strip()
+                    # Strip out characters that break standard YAML markup parsing rules
+                    key = "".join(c for c in key if c.isalnum() or c == "_")
+                    if len(key) > 2 and len(value) > 4:
+                        structured_map[key] = value
+                
+                # Case 2: Definition string extraction (captures 'is characterized by', 'refers to')
+                elif "is characterized by" in cleaned_line.lower() or "refers to" in cleaned_line.lower() or "is a process" in cleaned_line.lower():
+                    words = cleaned_line.split()
+                    key = f"definition_{index}"
+                    if len(words) > 2:
+                        key = f"def_{words[0].lower()}_{words[1].lower()}"
+                    key = "".join(c for c in key if c.isalnum() or c == "_")
+                    structured_map[key] = cleaned_line
+
+            # Robust fallback logic mapping raw paragraph strings safely into keys if text is unstructured
+            if not structured_map:
+                structured_map["document_title"] = name.replace(" ", "_").lower()
+                structured_map["extracted_summary"] = raw_text.replace("\n", " ")[:200].strip() + "..."
+                # Segment remaining content cleanly
+                chunks = [raw_text[i:i+400].replace("\n", " ").strip() for i in range(0, min(len(raw_text), 2000), 400)]
+                for i, chunk in enumerate(chunks):
+                    structured_map[f"content_segment_{i+1}"] = chunk
+
+            # Write out file onto local drive
+            yaml_filename = f"{name}.yaml"
+            yaml_filepath = os.path.join(CACHE_DIR, yaml_filename)
+            with open(yaml_filepath, "w", encoding="utf-8") as yf:
+                yaml.dump(structured_map, yf, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                
+            files_processed += 1
+            
+    return files_processed
+
+# -------------------------------------------------------------
+# APPLICATION DASHBOARD RENDER LAYER
+# -------------------------------------------------------------
+st.sidebar.header("⚙️ Local System Controls")
+st.sidebar.markdown(f"**Source Docs Directory:** `{SOURCE_DIR}/`")
+st.sidebar.markdown(f"**Cached YAML Target Folder:** `{CACHE_DIR}/`")
+
+if st.sidebar.button("🔄 Auto-Scan Folder & Convert to YAML"):
+    count = automatic_yaml_generator()
+    if count > 0:
+        st.sidebar.success(f"Processed {count} file targets (.txt, .pdf, .docx) into search caches!")
+    else:
+        st.sidebar.warning("No new compatible documents located in source folder directories.")
+
+# Dynamically populate user selectors based on any detected files
+available_files = [f for f in os.listdir(SOURCE_DIR) if os.path.splitext(f)[1].lower() in [".txt", ".pdf", ".docx"]]
+
+if available_files:
+    selected_file = st.selectbox("📂 Select file to perform lookup comparisons against:", available_files)
+    name, ext = os.path.splitext(selected_file)
     
-    if data_type == "yaml":
+    # Read text dynamically from original native source file
+    raw_context = extract_text_from_file(os.path.join(SOURCE_DIR, selected_file), ext.lower())
+    
+    # Fetch automatically mapped YAML conversion counterpart
+    yaml_path = os.path.join(CACHE_DIR, f"{name}.yaml")
+    if os.path.exists(yaml_path):
+        with open(yaml_path, "r", encoding="utf-8") as yf:
+            yaml_context = yf.read()
+    else:
+        yaml_context = "--- \nstatus: Please click the 'Auto-Scan' button on the sidebar to compile this asset."
+else:
+    raw_context = "Auditing: Auditing is characterized by an independent examination of an entity."
+    yaml_context = "auditing:\n  definition: Independent examination of an entity."
+
+user_query = st.text_input("💬 Type your question here:", value="What is Auditing?")
+
+def search_engine(query, context, mode):
+    query_words = [w.lower() for w in query.replace("?", "").split() if len(w) > 3]
+    query_lower = query.lower()
+    is_definition_query = "what is" in query_lower or "define" in query_lower
+    
+    if mode == "yaml":
         try:
-            parsed_yaml = yaml.safe_load(context)
-            for key, val in parsed_yaml.items():
-                if any(word in str(key).lower() for word in query_words):
-                    return f"{key}: {val}"
-                if isinstance(val, dict):
-                    for subkey, subval in val.items():
-                        if any(word in str(subkey).lower() for word in query_words):
-                            return f"{subkey}: {subval}"
-        except Exception:
-            return "Error parsing YAML file structure."
-        return "Key terms not matched in YAML layout structure."
+            data = yaml.safe_load(context)
+            if is_definition_query:
+                for k, v in data.items():
+                    if "def" in str(k).lower() or "audit" in str(k).lower():
+                        return f"**{k}**: {v}"
+            for k, v in data.items():
+                if any(w in str(k).lower() for w in query_words):
+                    return f"**{k}**: {v}"
+        except:
+            return "Parsing error encountered."
+        return "No specific schema coordinates matched query variables."
     else:
         lines = context.split("\n")
-        matched_lines = [line for line in lines if any(word in line.lower() for word in query_words)]
-        if matched_lines:
-            return " ".join(matched_lines[:2])
-        return "No direct line matches found within the raw text document context."
+        if is_definition_query:
+            for line in lines:
+                if "audit" in line.lower() and any(t in line.lower() for t in ["characterized by", "refers to", "process"]):
+                    return line.strip()
+        matches = [l for l in lines if any(w in l.lower() for w in query_words)]
+        return matches[0] if matches else "No raw text variables intercepted matching key words."
 
-# 5. Core Performance Matrix Render
 if user_query:
     raw_tokens = estimate_tokens(raw_context + user_query)
     yaml_tokens = estimate_tokens(yaml_context + user_query)
     savings = max(0, ((raw_tokens - yaml_tokens) / raw_tokens) * 100)
 
-    st.info(f"💡 **Token Reduction Impact:** Your setup shrinks input payload size by **{savings:.1f}%** dynamically!")
+    st.info(f"📈 **Token Budget Metrics:** YAML structured compiler yielded an optimization matrix reducing dataset size by **{savings:.1f}%**.")
 
     col1, col2 = st.columns(2)
-
     with col1:
-        st.error("❌ Approach A: Searching Raw Context Strings")
-        st.metric(label="Estimated Input Tokens Passed", value=raw_tokens)
-        with st.expander("Show Raw Data Payload"):
-            st.code(raw_context, language="text")
-        
-        response_raw = dynamic_search(user_query, raw_context, "raw")
-        st.markdown(f"**AI Search Output:** {response_raw}")
+        st.error("❌ Approach A: Processing Native Unstructured Data")
+        st.metric("Total Tokens Transmitted", raw_tokens)
+        with st.expander("Show Native Text Extract"):
+            st.text(raw_context)
+        st.markdown(f"**Search Result:** {search_engine(user_query, raw_context, 'raw')}")
 
     with col2:
-        st.success("✅ Approach B: Querying Compressed YAML Schema Mapping")
-        st.metric(label="Estimated Input Tokens Passed", value=yaml_tokens, delta=f"-{max(0, raw_tokens - yaml_tokens)} tokens")
-        with st.expander("Show Compressed YAML Payload"):
+        st.success("✅ Approach B: Querying Auto-Generated YAML Database Layer")
+        st.metric("Total Tokens Transmitted", yaml_tokens, delta=f"-{max(0, raw_tokens - yaml_tokens)} tokens")
+        with st.expander("Show Optimized YAML Layout"):
             st.code(yaml_context, language="yaml")
-            
-        response_yaml = dynamic_search(user_query, yaml_context, "yaml")
-        st.markdown(f"**AI Search Output:** `{response_yaml}`")
+        st.markdown(f"**Search Result:** {search_engine(user_query, yaml_context, 'yaml')}")
